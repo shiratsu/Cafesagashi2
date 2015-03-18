@@ -1,6 +1,7 @@
 package shiratsu.co.jp.cafesagashi;
 
 import android.content.Context;
+import android.location.Location;
 import android.os.Bundle;
 import android.support.v4.app.Fragment;
 import android.support.v4.app.FragmentManager;
@@ -13,12 +14,20 @@ import android.view.ViewGroup;
 
 import com.google.android.gms.common.ConnectionResult;
 import com.google.android.gms.common.GooglePlayServicesUtil;
+import com.google.android.gms.common.api.GoogleApiClient;
+import com.google.android.gms.location.FusedLocationProviderApi;
+import com.google.android.gms.location.LocationListener;
+import com.google.android.gms.location.LocationRequest;
+import com.google.android.gms.location.LocationServices;
 import com.google.android.gms.maps.CameraUpdateFactory;
 import com.google.android.gms.maps.GoogleMap;
 import com.google.android.gms.maps.SupportMapFragment;
 import com.google.android.gms.maps.UiSettings;
 import com.google.android.gms.maps.model.CameraPosition;
 import com.google.android.gms.maps.model.LatLng;
+
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 
 /**
@@ -29,13 +38,32 @@ import com.google.android.gms.maps.model.LatLng;
  * Use the {@link CafeMapFragment#newInstance} factory method to
  * create an instance of this fragment.
  */
-public class CafeMapFragment extends Fragment {
+public class CafeMapFragment extends Fragment
+        implements GoogleMap.OnMyLocationChangeListener,
+        GoogleApiClient.ConnectionCallbacks,
+        GoogleApiClient.OnConnectionFailedListener,
+        LocationListener {
 
 
     //private OnFragmentInteractionListener mListener;
     private SupportMapFragment fragment;
     /*object of google map*/
     public GoogleMap mGoogleMap;
+    private String textLog = "start\n";
+    private Location location;
+
+    GoogleMap.OnMyLocationChangeListener listener;
+
+    private LocationListener lolistner;
+
+    private FusedLocationProviderApi fusedLocationProviderApi = LocationServices.FusedLocationApi;
+    private GoogleApiClient mLocationClient = null;
+    private static final LocationRequest locationRequest = LocationRequest.create()
+            .setInterval(5000)
+            .setFastestInterval(16)
+            .setPriority(LocationRequest.PRIORITY_HIGH_ACCURACY);
+
+    private boolean mResolvingError = false;
 
     /**
      * Use this factory method to create a new instance of
@@ -78,6 +106,17 @@ public class CafeMapFragment extends Fragment {
     @Override
     public View onCreateView(LayoutInflater inflater, ViewGroup container,
                              Bundle savedInstanceState) {
+        listener = (GoogleMap.OnMyLocationChangeListener) this;
+
+        mLocationClient = new GoogleApiClient.Builder(getActivity())
+                .addApi(LocationServices.API)
+                .addConnectionCallbacks(this)
+                .addOnConnectionFailedListener(this)
+                .build();
+        if(mLocationClient != null){
+            mLocationClient.connect();
+        }
+
 
         return inflater.inflate(R.layout.fragment_cafe_map, container, false);
     }
@@ -122,6 +161,8 @@ public class CafeMapFragment extends Fragment {
                 Log.d("TEST", "zoop:" + position.zoom);
             }
         });
+
+        mGoogleMap.setOnMyLocationChangeListener(listener);
     }
 
     public void onDestroyView() {
@@ -138,8 +179,83 @@ public class CafeMapFragment extends Fragment {
     }
 
 
+    @Override
+    public void onMyLocationChange(Location loc) {
+        Log.d("TEST", "lat:" + loc.getLatitude()+ " lng:"+loc.getLongitude());
+        LatLng curr = new LatLng(loc.getLatitude(), loc.getLongitude());
+        mGoogleMap.animateCamera(CameraUpdateFactory.newLatLng(curr));
+    }
 
+    @Override
+    public void onConnected(Bundle bundle) {
 
+        Location currentLocation = fusedLocationProviderApi.getLastLocation(mLocationClient
+        );
+        if (currentLocation != null && currentLocation.getTime() > 20000) {
+            location = currentLocation;
 
+            textLog += "----------\n";
+            textLog += "Latitude="+ String.valueOf(location.getLatitude())+"\n";
+            textLog += "Longitude="+ String.valueOf(location.getLongitude())+"\n";
+            textLog += "Accuracy="+ String.valueOf(location.getAccuracy())+"\n";
+            textLog += "Altitude="+ String.valueOf(location.getAltitude())+"\n";
+            textLog += "Time="+ String.valueOf(location.getTime())+"\n";
+            textLog += "Speed="+ String.valueOf(location.getSpeed())+"\n";
+            textLog += "Bearing="+ String.valueOf(location.getBearing())+"\n";
+            Log.d("TEST", textLog);
 
+        } else {
+            fusedLocationProviderApi.requestLocationUpdates(mLocationClient, locationRequest, this);
+            // Schedule a Thread to unregister location listeners
+            Executors.newScheduledThreadPool(1).schedule(new Runnable() {
+                @Override
+                public void run() {
+                    fusedLocationProviderApi.removeLocationUpdates(mLocationClient, lolistner);
+                }
+            }, 60000, TimeUnit.MILLISECONDS);
+
+            textLog += "onConnected(), requestLocationUpdates \n";
+            Log.d("TEST", textLog);
+        }
+
+    }
+
+    @Override
+    public void onConnectionSuspended(int i) {
+        textLog += "onConnectionSuspended()\n";
+        Log.d("TEST", textLog);
+    }
+
+    @Override
+    public void onLocationChanged(Location location) {
+
+        textLog += "----------\n";
+        textLog += "Latitude="+ String.valueOf(location.getLatitude())+"\n";
+        textLog += "Longitude="+ String.valueOf(location.getLongitude())+"\n";
+        textLog += "Accuracy="+ String.valueOf(location.getAccuracy())+"\n";
+        textLog += "Altitude="+ String.valueOf(location.getAltitude())+"\n";
+        textLog += "Time="+ String.valueOf(location.getTime())+"\n";
+        textLog += "Speed="+ String.valueOf(location.getSpeed())+"\n";
+        textLog += "Bearing="+ String.valueOf(location.getBearing())+"\n";
+
+        Log.d("TEST", textLog);
+
+    }
+
+    @Override
+    public void onConnectionFailed(ConnectionResult connectionResult) {
+        textLog += "onConnectionFailed()\n";
+        Log.d("TEST", textLog);
+
+        if (mResolvingError) {
+            // Already attempting to resolve an error.
+            Log.d("","Already attempting to resolve an error");
+
+            return;
+        } else if (connectionResult.hasResolution()) {
+
+        } else {
+            mResolvingError = true;
+        }
+    }
 }
